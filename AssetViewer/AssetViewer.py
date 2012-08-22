@@ -2,6 +2,7 @@ import glob
 import os.path
 from FabricEngine.CreationPlatform.PySide.Widgets import *
 from FabricEngine.CreationPlatform.Nodes.Rendering import *
+from FabricEngine.CreationPlatform.Nodes.Manipulation import *
 
 class AssetViewerApp(Application):
   
@@ -100,7 +101,7 @@ class AssetViewerApp(Application):
       def __init__(self, scene, **options):
         super(ThumbnailViewport, self).__init__(scene, **options)
       
-        self.setBackgroundColor(Color(1.0, 0.0, 0.0, 1.0))
+        self.setBackgroundColor(Color(0.0, 0.0, 0.0, 1.0))
         self.setMaximumSize(QtCore.QSize(100, 100))
         self.setMinimumSize(self.maximumSize())
       
@@ -128,9 +129,15 @@ class AssetViewerApp(Application):
       )
       self.__thumbnails.append(viewport)
       
+      # setup the camera + camera manipulation
+      camera = TargetCamera(scene)
+      viewport.setCameraNode(camera)
+      manipulator = CameraManipulator(scene, autoRegister=False)
+      viewport.getManipulatorHostNode().addManipulatorNode(manipulator)
+      
       # for debugging      
       count = count + 1
-      if count == 10:
+      if count == 3:
         break
       progBar.setValue(count)
     
