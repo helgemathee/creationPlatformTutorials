@@ -8,6 +8,9 @@ class AssetViewerApp(Application):
   def __init__(self, **options):
     
     super(AssetViewerApp, self).__init__(**options)
+
+    # private member definitions
+    self.__directory = os.path.abspath('.')
     
     # access mainwindow and menubar
     mainWindow = self.getMainWindow()
@@ -23,7 +26,18 @@ class AssetViewerApp(Application):
     browseAction.triggered.connect(self.browseDirectory)
     quitAction.triggered.connect(self.close)
     
-    self.__directory = os.path.abspath('.')
+    # define the metadata dockwidget class
+    class MetaDataDockWidget(DockWidget):
+      
+      def __init__(self, options):
+        
+        super(MetaDataDockWidget, self).__init__(options)
+        self.setWindowTitle('MetaData')
+        self.setMinimumSize(QtCore.QSize(200, 100))
+    
+    
+    # add all dockwidgets
+    self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, MetaDataDockWidget({}))
     
     self.constructionCompleted()
     
