@@ -105,7 +105,7 @@ class AssetViewerApp(Application):
         super(ThumbnailViewport, self).__init__(scene, **options)
       
         self.setBackgroundColor(Color(0.0, 0.0, 0.0, 1.0))
-        self.setMaximumSize(QtCore.QSize(100, 100))
+        self.setMaximumSize(QtCore.QSize(300, 300))
         self.setMinimumSize(self.maximumSize())
       
     # create a new scene
@@ -141,7 +141,7 @@ class AssetViewerApp(Application):
       # setup the shader
       group = ShaderGroup(scene)
       viewport.addShaderGroupNode(group)
-      light = PointLight(scene)
+      light = PointLight(scene, transform = camera.getTransformNode())
       material = Material(scene,
         shaderGroup=group,
         xmlFile='Standard/Phong',
@@ -153,6 +153,7 @@ class AssetViewerApp(Application):
       extension = fileName.rpartition('.')[2]
       if extension.lower() == "obj":
         
+        # create the OBJ parser and the instances
         parser = OBJParser(scene, url = fileName)
         for triangles in parser.getAllTrianglesNodes():
           instance = Instance(scene,
@@ -160,6 +161,16 @@ class AssetViewerApp(Application):
             geometry = triangles,
             material = material
           )
+          
+          # get the bounding box
+          bbox = triangles.getBoundingBox()
+          target = bbox['min'].add(bbox['max']).multiplyScalar(0.5)
+          position = target.subtract(bbox['max']).multiplyScalar(3.0).add(target)
+          
+          # setup the camera
+          camera.setTarget(target)
+          camera.setNearDistance(target.subtract(position).length() * 0.01)
+          camera.setFarDistance(target.subtract(position).length() * 5.0)
       
       # for debugging      
       count = count + 1
@@ -185,6 +196,7 @@ class AssetViewerApp(Application):
         
   def showMainUI(self):
     super(AssetViewerApp, self).showMainUI()
+    self.getMainWindow().setWindowState(QtCore.Qt.WindowMaximized)
     self.__updateLayout()
     
 app = AssetViewerApp()
