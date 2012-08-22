@@ -34,6 +34,11 @@ class AssetViewerApp(Application):
         super(MetaDataDockWidget, self).__init__(options)
         self.setWindowTitle('MetaData')
         self.setMinimumSize(QtCore.QSize(200, 100))
+        
+        widget = QtGui.QWidget(self)
+        widget.setLayout(QtGui.QGridLayout(widget))
+        self.__textEdit = QtGui.QRichTextEdit(widget)
+        widget.layout().addWidget(self.__textEdit)
     
     
     # add all dockwidgets
