@@ -35,14 +35,27 @@ class AssetViewerApp(Application):
         self.setWindowTitle('MetaData')
         self.setMinimumSize(QtCore.QSize(200, 100))
         
+        # create new empty widget and set it as central widget
         widget = QtGui.QWidget(self)
+        self.setWidget(widget)
+        
+        # create layout
         widget.setLayout(QtGui.QGridLayout(widget))
-        self.__textEdit = QtGui.QRichTextEdit(widget)
-        widget.layout().addWidget(self.__textEdit)
-    
+        self.__textEdit = QtGui.QPlainTextEdit(widget)
+        self.__textEdit.setReadOnly(True)
+        widget.layout().addWidget(self.__textEdit, 0, 0)
+        
+      def setMetaData(self, data):
+        self.__textEdit.setPlainText(str(data))
+        
+      def metaData(self):
+        return  self.__textEdit.plainText()
+        
     
     # add all dockwidgets
-    self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, MetaDataDockWidget({}))
+    self.__metaDataDock = MetaDataDockWidget({})
+    self.__metaDataDock.setMetaData('Test test test')
+    self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.__metaDataDock)
     
     self.constructionCompleted()
     
