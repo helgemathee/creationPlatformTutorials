@@ -3,6 +3,9 @@ import os.path
 from FabricEngine.CreationPlatform.PySide.Widgets import *
 from FabricEngine.CreationPlatform.Nodes.Rendering import *
 from FabricEngine.CreationPlatform.Nodes.Manipulation import *
+from FabricEngine.CreationPlatform.Nodes.Parsers import *
+from FabricEngine.CreationPlatform.Nodes.Kinematics import *
+from FabricEngine.CreationPlatform.Nodes.Lights import *
 
 class AssetViewerApp(Application):
   
@@ -134,6 +137,29 @@ class AssetViewerApp(Application):
       viewport.setCameraNode(camera)
       manipulator = CameraManipulator(scene, autoRegister=False)
       viewport.getManipulatorHostNode().addManipulatorNode(manipulator)
+      
+      # setup the shader
+      group = ShaderGroup(scene)
+      viewport.addShaderGroupNode(group)
+      light = PointLight(scene)
+      material = Material(scene,
+        shaderGroup=group,
+        xmlFile='Standard/Phong',
+        light=light,
+        diffuseColor=Color(0.0,1.0,0.0)
+      )
+      
+      # get the file extension
+      extension = fileName.rpartition('.')[2]
+      if extension.lower() == "obj":
+        
+        parser = OBJParser(scene, url = fileName)
+        for triangles in parser.getAllTrianglesNodes():
+          instance = Instance(scene,
+            transform = Transform(scene),
+            geometry = triangles,
+            material = material
+          )
       
       # for debugging      
       count = count + 1
