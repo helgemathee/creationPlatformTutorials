@@ -83,8 +83,13 @@ class AssetViewerApp(Application):
     allFiles.extend(glob.glob(os.path.join(self.__directory, "*.las")))
     allFiles.extend(glob.glob(os.path.join(self.__directory, "*.laz")))
     
-    for allFile in allFiles:
-      print allFile
+    # if we already have a scene, close it
+    if len(self._scenes) > 0:
+      self._scenes[0].close()
+      self._scenes.remove(self._scenes[0])
+      
+    # create a new scene
+    self._scenes.append(Scene(self, exts = {'FabricOBJ':'', 'FabricLIDAR': ''}, guarded = True))
     
 app = AssetViewerApp()
 app.exec_()
