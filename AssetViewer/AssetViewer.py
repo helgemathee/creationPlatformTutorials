@@ -108,6 +108,13 @@ class AssetViewerApp(Application):
     scene = Scene(self, exts = {'FabricOBJ':'', 'FabricLIDAR': ''}, guarded = True)
     self._scenes.append(scene)
     
+    # setup progressbar
+    progBar = QtGui.QProgressBar()
+    progBar.setWindowModality(QtCore.Qt.ApplicationModal)
+    progBar.setMinimum(0)
+    progBar.setMaximum(len(allFiles))
+    progBar.show()
+    
     # loop over all files
     count = 0
     for fileName in allFiles:
@@ -125,6 +132,9 @@ class AssetViewerApp(Application):
       count = count + 1
       if count == 10:
         break
+      progBar.setValue(count)
+    
+    progBar.hide()
       
   def __updateLayout(self):
     centralWidget = self.getMainWindow().getCentralWidget()
@@ -139,7 +149,7 @@ class AssetViewerApp(Application):
       if width >= centralWidget.size().width():
         col = 0
         row = row + 1
-  
+        
   def showMainUI(self):
     super(AssetViewerApp, self).showMainUI()
     self.__updateLayout()
