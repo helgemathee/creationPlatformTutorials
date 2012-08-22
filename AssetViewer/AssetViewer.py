@@ -1,10 +1,12 @@
 import glob
 import os.path
 from FabricEngine.CreationPlatform.PySide.Widgets import *
+from FabricEngine.CreationPlatform.Nodes.Rendering import *
 
 class AssetViewerApp(Application):
   
   __directory = None
+  __thumbnails = None
 
   def __init__(self, **options):
     
@@ -12,6 +14,7 @@ class AssetViewerApp(Application):
 
     # private member definitions
     self.__directory = os.path.abspath('.')
+    self.__thumbnails = []
     
     # access mainwindow and menubar
     mainWindow = self.getMainWindow()
@@ -85,11 +88,45 @@ class AssetViewerApp(Application):
     
     # if we already have a scene, close it
     if len(self._scenes) > 0:
+      for thumbnail in self.__thumbnails:
+        self.getMainWindow().getCentralWidget().layout().removeWidget(thumbnail)
+      self.__thumbnails = []
       self._scenes[0].close()
       self._scenes.remove(self._scenes[0])
       
+    # thumbnail widget
+    class ThumbnailViewport(Viewport):
+      
+      def __init__(self, scene, **options):
+        super(ThumbnailViewport, self).__init__(scene, **options)
+      
+        self.setBackgroundColor(Color(1.0, 0.0, 0.0, 1.0))
+        self.setMaximumSize(QtCore.QSize(200, 200))
+      
     # create a new scene
-    self._scenes.append(Scene(self, exts = {'FabricOBJ':'', 'FabricLIDAR': ''}, guarded = True))
+    scene = Scene(self, exts = {'FabricOBJ':'', 'FabricLIDAR': ''}, guarded = True)
+    self._scenes.append(scene)
+    
+    # loop over all files
+    count = 0
+    for fileName in allFiles:
+      fileNameParts = os.path.split(fileName)
+      print fileNameParts[1]
+      
+      viewport = ThumbnailViewport(
+        scene,
+        parentWidget = self.getMainWindow(),
+        name = fileNameParts[1]
+      )
+      self.__thumbnails.append(viewport)
+      
+      self.getMainWindow().getCentralWidget().layout().addWidget(viewport, 0, count)
+
+      # for debugging      
+      count = count + 1
+      if count == 3:
+        break
+      
     
 app = AssetViewerApp()
 app.exec_()
