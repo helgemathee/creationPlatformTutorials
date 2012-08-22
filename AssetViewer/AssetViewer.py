@@ -101,7 +101,8 @@ class AssetViewerApp(Application):
         super(ThumbnailViewport, self).__init__(scene, **options)
       
         self.setBackgroundColor(Color(1.0, 0.0, 0.0, 1.0))
-        self.setMaximumSize(QtCore.QSize(200, 200))
+        self.setMaximumSize(QtCore.QSize(100, 100))
+        self.setMinimumSize(self.maximumSize())
       
     # create a new scene
     scene = Scene(self, exts = {'FabricOBJ':'', 'FabricLIDAR': ''}, guarded = True)
@@ -120,13 +121,28 @@ class AssetViewerApp(Application):
       )
       self.__thumbnails.append(viewport)
       
-      self.getMainWindow().getCentralWidget().layout().addWidget(viewport, 0, count)
-
       # for debugging      
       count = count + 1
-      if count == 3:
+      if count == 10:
         break
       
+  def __updateLayout(self):
+    centralWidget = self.getMainWindow().getCentralWidget()
+    
+    col = 0
+    row = 0
+    for thumbnail in self.__thumbnails:
+      centralWidget.layout().addWidget(thumbnail, row, col, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
+      col = col + 1
+      
+      width = col * (thumbnail.maximumSize().width() + 10)
+      if width >= centralWidget.size().width():
+        col = 0
+        row = row + 1
+  
+  def showMainUI(self):
+    super(AssetViewerApp, self).showMainUI()
+    self.__updateLayout()
     
 app = AssetViewerApp()
 app.exec_()
