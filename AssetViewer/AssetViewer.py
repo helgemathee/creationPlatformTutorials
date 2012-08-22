@@ -1,3 +1,4 @@
+import glob
 import os.path
 from FabricEngine.CreationPlatform.PySide.Widgets import *
 
@@ -57,6 +58,9 @@ class AssetViewerApp(Application):
     self.__metaDataDock.setMetaData('Test test test')
     self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.__metaDataDock)
     
+    # browse the initial folder
+    self.browseDirectory("C:\\Users\\helge\\Documents\\My Dropbox\\Siggraph2012\\AssetBrowser\\Office Objects")
+    
     self.constructionCompleted()
     
   def browseDirectory(self, directory = None):
@@ -70,9 +74,17 @@ class AssetViewerApp(Application):
       if qtDir is None:
         return
       self.__directory = str(qtDir)
+    else:
+      self.__directory = directory
+
+    # gather all files    
+    allFiles = []
+    allFiles.extend(glob.glob(os.path.join(self.__directory, "*.obj")))
+    allFiles.extend(glob.glob(os.path.join(self.__directory, "*.las")))
+    allFiles.extend(glob.glob(os.path.join(self.__directory, "*.laz")))
     
-    print self.__directory
-    
+    for allFile in allFiles:
+      print allFile
     
 app = AssetViewerApp()
 app.exec_()
