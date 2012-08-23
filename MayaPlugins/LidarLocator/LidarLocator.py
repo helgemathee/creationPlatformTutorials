@@ -9,19 +9,21 @@ import maya.cmds as mc
 class LidarLocator(OpenMayaMPx.MPxLocatorNode):
   
   __fileName = OpenMaya.MObject()
+  __fileNameValue = None
   
   def __init__(self):
     super(LidarLocator, self).__init__()
+    self.__fileNameValue = ""
     
   def __del__(self):
     pass
     
-  def compute(self, plug, datablock):
-    pass
-  
   def draw(self, view, path, style, status):
-    pass
-  
+    fileNameValue = OpenMaya.MPlug(self.thisMObject(), LidarLocator.__fileName).asString()
+    if not fileNameValue == self.__fileNameValue:
+      self.__fileNameValue = fileNameValue
+      print fileNameValue
+    
   @staticmethod
   def creator():
     return OpenMayaMPx.asMPxPtr( LidarLocator() )
