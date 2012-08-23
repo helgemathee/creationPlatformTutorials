@@ -132,27 +132,28 @@ class AssetViewerApp(Application):
       )
       self.__thumbnails.append(viewport)
       
-      # setup the camera + camera manipulation
-      camera = TargetCamera(scene)
-      viewport.setCameraNode(camera)
-      manipulator = CameraManipulator(scene, autoRegister=False)
-      viewport.getManipulatorHostNode().addManipulatorNode(manipulator)
-      
       # setup the shader
       group = ShaderGroup(scene)
       viewport.addShaderGroupNode(group)
-      light = PointLight(scene, transform = camera.getTransformNode())
-      material = Material(scene,
-        shaderGroup=group,
-        xmlFile='Standard/Phong',
-        light=light,
-        diffuseColor=Color(0.0,1.0,0.0)
-      )
+      
+      camTarget = Vec3(0.0, 0.0, 0.0)
+      camPosition = Vec3(100.0, 100.0, 100.0)
+      camNearDistance = 0.1
+      camFarDistance = 10.0
+      light = None
       
       # get the file extension
       extension = fileName.rpartition('.')[2]
       if extension.lower() == "obj":
-        
+
+        light = PointLight(scene)
+        material = Material(scene,
+          shaderGroup=group,
+          xmlFile='Standard/Phong',
+          light=light,
+          diffuseColor=Color(0.0,1.0,0.0)
+        )
+
         # create the OBJ parser and the instances
         parser = OBJParser(scene, url = fileName)
         for triangles in parser.getAllTrianglesNodes():
@@ -164,13 +165,24 @@ class AssetViewerApp(Application):
           
           # get the bounding box
           bbox = triangles.getBoundingBox()
-          target = bbox['min'].add(bbox['max']).multiplyScalar(0.5)
-          position = target.subtract(bbox['max']).multiplyScalar(3.0).add(target)
-          
-          # setup the camera
-          camera.setTarget(target)
-          camera.setNearDistance(target.subtract(position).length() * 0.01)
-          camera.setFarDistance(target.subtract(position).length() * 5.0)
+          camTarget = bbox['min'].add(bbox['max']).multiplyScalar(0.5)
+          camPosition = camTarget.subtract(bbox['max']).multiplyScalar(3.0).add(camTarget)
+          camNearDistance = camTarget.subtract(camPosition).length() * 0.01
+          camFarDistance = camTarget.subtract(camPosition).length() * 5.0
+
+      # setup the camera + camera manipulation
+      camera = TargetCamera(scene,
+        target = camTarget,
+        position = camPosition,
+        nearDistance = camNearDistance,
+        farDistance = camFarDistance
+      )
+      viewport.setCameraNode(camera)
+      manipulator = CameraManipulator(scene, autoRegister=False)
+      viewport.getManipulatorHostNode().addManipulatorNode(manipulator)
+      
+      # if we did create a light, connect it to the camera
+      light.setTransformNode(camera.getTransformNode())
       
       # for debugging      
       count = count + 1
