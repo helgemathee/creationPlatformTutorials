@@ -34,6 +34,15 @@ class AssetViewerApp(Application):
     browseAction.triggered.connect(self.browseDirectory)
     quitAction.triggered.connect(self.close)
     
+    # setup the scroll area
+    scrollArea = QtGui.QScrollArea(self.getMainWindow().getCentralWidget())
+    scrollArea.setWidgetResizable(True)
+    scrollArea.setEnabled(True)    
+    self.getMainWindow().getCentralWidget().layout().addWidget(scrollArea)
+    self.__contentWidget = QtGui.QWidget(scrollArea)
+    scrollArea.setWidget(self.__contentWidget)
+    self.__contentWidget.setLayout(QtGui.QGridLayout())
+    
     # define the metadata dockwidget class
     class MetaDataDockWidget(DockWidget):
       
@@ -66,7 +75,7 @@ class AssetViewerApp(Application):
     self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.__metaDataDock)
     
     # browse the initial folder
-    self.browseDirectory("C:\\Users\\helge\\Documents\\My Dropbox\\Siggraph2012\\AssetBrowser\\Office Objects")
+    self.browseDirectory("C:\\Users\\helge\\Documents\\My Dropbox\\Siggraph2012\\AssetBrowser\\Terrain Data")
     
     self.constructionCompleted()
     
@@ -93,7 +102,8 @@ class AssetViewerApp(Application):
     # if we already have a scene, close it
     if len(self._scenes) > 0:
       for thumbnail in self.__thumbnails:
-        self.getMainWindow().getCentralWidget().layout().removeWidget(thumbnail)
+        self.__contentWidget.layout().removeWidget(thumbnail)
+        thumbnail.close()
       self.__thumbnails = []
       self._scenes[0].close()
       self._scenes.remove(self._scenes[0])
@@ -123,7 +133,6 @@ class AssetViewerApp(Application):
     count = 0
     for fileName in allFiles:
       fileNameParts = os.path.split(fileName)
-      print fileNameParts[1]
       
       viewport = ThumbnailViewport(
         scene,
@@ -151,7 +160,7 @@ class AssetViewerApp(Application):
           shaderGroup=group,
           xmlFile='Standard/Phong',
           light=light,
-          diffuseColor=Color(0.0,1.0,0.0)
+          diffuseColor=Color(0.8,0.8,0.8)
         )
 
         # create the OBJ parser and the instances
@@ -169,6 +178,29 @@ class AssetViewerApp(Application):
           camPosition = camTarget.subtract(bbox['max']).multiplyScalar(3.0).add(camTarget)
           camNearDistance = camTarget.subtract(camPosition).length() * 0.01
           camFarDistance = camTarget.subtract(camPosition).length() * 5.0
+      elif extension.lower() == "las" or extension.lower() == "laz":
+
+        material = Material(scene,
+          shaderGroup=group,
+          xmlFile='Standard/Flat',
+          color=Color(0.0,1.0,0.0)
+        )
+
+        # create the LIDAR parser and the instances
+        parser = LidarParser(scene, url = fileName)
+        points = parser.getPointsNode()
+        instance = Instance(scene,
+          transform = Transform(scene),
+          geometry = points,
+          material = material
+        )
+          
+        # get the bounding box
+        bbox = points.getBoundingBox()
+        camTarget = bbox['min'].add(bbox['max']).multiplyScalar(0.5)
+        camPosition = camTarget.subtract(bbox['max']).multiplyScalar(3.0).add(camTarget)
+        camNearDistance = camTarget.subtract(camPosition).length() * 0.01
+        camFarDistance = camTarget.subtract(camPosition).length() * 5.0
 
       # setup the camera + camera manipulation
       camera = TargetCamera(scene,
@@ -182,29 +214,33 @@ class AssetViewerApp(Application):
       viewport.getManipulatorHostNode().addManipulatorNode(manipulator)
       
       # if we did create a light, connect it to the camera
-      light.setTransformNode(camera.getTransformNode())
+      if not light is None:
+        light.setTransformNode(camera.getTransformNode())
       
       # for debugging      
       count = count + 1
-      if count == 3:
+      if count == 10:
         break
       progBar.setValue(count)
     
     progBar.hide()
+    
+    # if this has been triggered through the menu, update the layout
+    if directory is None:
+      self.__updateLayout()
       
   def __updateLayout(self):
-    centralWidget = self.getMainWindow().getCentralWidget()
-    
     col = 0
     row = 0
     for thumbnail in self.__thumbnails:
-      centralWidget.layout().addWidget(thumbnail, row, col, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
-      col = col + 1
+      self.__contentWidget.layout().addWidget(thumbnail, row, col, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
       
-      width = col * (thumbnail.maximumSize().width() + 10)
-      if width >= centralWidget.size().width():
+      width = (col+1) * (thumbnail.maximumSize().width() + 50)
+      if width >= self.__contentWidget.size().width():
         col = 0
         row = row + 1
+      else:
+        col = col + 1
         
   def showMainUI(self):
     super(AssetViewerApp, self).showMainUI()
