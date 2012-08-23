@@ -111,12 +111,36 @@ class AssetViewerApp(Application):
     # thumbnail widget
     class ThumbnailViewport(Viewport):
       
+      __prevWidget = None
+      __prevMaximumSize = None
+      
       def __init__(self, scene, **options):
         super(ThumbnailViewport, self).__init__(scene, **options)
       
         self.setBackgroundColor(Color(0.0, 0.0, 0.0, 1.0))
         self.setMaximumSize(QtCore.QSize(300, 300))
         self.setMinimumSize(self.maximumSize())
+        
+      def mouseDoubleClickEvent (self, event):
+        
+        application = self.getScene().getApplication()
+        centralWidget = application.getMainWindow().getCentralWidget()
+        prevWidget = centralWidget.layout().itemAt(0).widget()
+        
+        if self.__prevWidget is None:
+          self.__prevWidget = prevWidget
+          self.__prevMaximumSize = self.maximumSize()
+          self.setMinimumSize(QtCore.QSize(1, 1))
+          self.setMaximumSize(QtCore.QSize(10000, 10000))
+          centralWidget.layout().removeWidget(prevWidget)
+          centralWidget.layout().addWidget(self)
+        else:
+          self.setMinimumSize(self.__prevMaximumSize)
+          self.setMaximumSize(self.__prevMaximumSize)
+          centralWidget.layout().removeWidget(self)
+          centralWidget.layout().addWidget(self.__prevWidget)
+          self.__prevWidget = None
+          application.updateLayout()
       
     # create a new scene
     scene = Scene(self, exts = {'FabricOBJ':'', 'FabricLIDAR': ''}, guarded = True)
@@ -219,24 +243,24 @@ class AssetViewerApp(Application):
       
       # for debugging      
       count = count + 1
-      if count == 10:
-        break
+      #if count == 2:
+      #  break
       progBar.setValue(count)
     
     progBar.hide()
     
     # if this has been triggered through the menu, update the layout
     if directory is None:
-      self.__updateLayout()
+      self.updateLayout()
       
-  def __updateLayout(self):
+  def updateLayout(self):
     col = 0
     row = 0
     for thumbnail in self.__thumbnails:
       self.__contentWidget.layout().addWidget(thumbnail, row, col, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
       
       width = (col+1) * (thumbnail.maximumSize().width() + 50)
-      if width >= self.__contentWidget.size().width():
+      if width >= self.getMainWindow().getCentralWidget().size().width():
         col = 0
         row = row + 1
       else:
@@ -245,7 +269,7 @@ class AssetViewerApp(Application):
   def showMainUI(self):
     super(AssetViewerApp, self).showMainUI()
     self.getMainWindow().setWindowState(QtCore.Qt.WindowMaximized)
-    self.__updateLayout()
+    self.updateLayout()
     
 app = AssetViewerApp()
 app.exec_()
