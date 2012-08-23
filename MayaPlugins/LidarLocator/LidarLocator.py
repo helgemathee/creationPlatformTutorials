@@ -6,22 +6,40 @@ import maya.OpenMayaAnim as OpenMayaAnim
 import maya.OpenMayaRender as OpenMayaRender
 import maya.cmds as mc
 
+from FabricEngine.CreationPlatform.SceneImpl import Scene
+from FabricEngine.CreationPlatform.Nodes.Parsers.LidarParserImpl import LidarParser
+
 class LidarLocator(OpenMayaMPx.MPxLocatorNode):
   
   __fileName = OpenMaya.MObject()
   __fileNameValue = None
+  __scene = None
+  __parser = None
   
   def __init__(self):
     super(LidarLocator, self).__init__()
     self.__fileNameValue = ""
+    self.__scene = Scene(None, exts = {'FabricLIDAR': ''}, guarded = True)
+    self.__parser = None
     
   def __del__(self):
-    pass
+    self.__parser = None
+    self.__scene.close()
+    self.__scene = None
     
   def draw(self, view, path, style, status):
     fileNameValue = OpenMaya.MPlug(self.thisMObject(), LidarLocator.__fileName).asString()
     if not fileNameValue == self.__fileNameValue:
       self.__fileNameValue = fileNameValue
+      
+      # todo: proper file checking
+      if self.__parser is None:
+        self.__parser = LidarParser(self.__scene, url = self.__fileNameValue)
+        
+        # todo: create the rendering pipeline for the points
+      else:
+        self.__parser.setUrl(self.__fileNameValue)
+      
       print fileNameValue
     
   @staticmethod
