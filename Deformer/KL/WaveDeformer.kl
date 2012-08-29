@@ -1,0 +1,16 @@
+
+
+use PolygonMesh;
+use GeometryAttributes;
+use Vec3;
+
+operator WaveDeformer(
+  io PolygonMesh mesh,
+  io GeometryAttributes attributes,
+  io Vec3 axis,
+  io Vec3 center,
+  io Scalar amplitude,
+  io Scalar frequency
+) {
+  report(amplitude);
+}

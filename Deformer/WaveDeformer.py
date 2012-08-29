@@ -43,6 +43,20 @@ class WaveDeformComponent(DeformComponent):
     self._addMemberInterface(dgNode, name+'amplitude', True)
     self._addMemberInterface(dgNode, name+'frequency', True)
     
+    # bind the operator
+    node.bindDGOperator(
+      dgNode.bindings,
+      name = "WaveDeformer",
+      layout = [
+        'self.polygonMesh',
+        'self.attributes',
+        'self.'+name+'axis',
+        'self.'+name+'center',
+        'self.'+name+'amplitude',
+        'self.'+name+'frequency'
+      ],
+      fileName = FabricEngine.CreationPlatform.buildAbsolutePath('KL', 'WaveDeformer.kl')
+    )
 
 class MyApp(Basic3DDemoApplication):
   
