@@ -14,8 +14,8 @@ class WaveDeformComponent(DeformComponent):
     options.setdefault('name', "wave")
     options.setdefault('axis', Vec3(1.0, 0.0, 0.0))
     options.setdefault('center', Vec3(0.0, 0.0, 0.0))
-    options.setdefault('amplitude', 1.0)
-    options.setdefault('frequency', 1.0)
+    options.setdefault('amplitude', 0.2)
+    options.setdefault('frequency', 3.0)
     
   def apply(self, node):
     
@@ -82,7 +82,7 @@ class MyApp(Basic3DDemoApplication):
     light = PointLight(scene, transform = camera.getTransformNode())
     
     # construct a torus structured mesh, transform and material
-    torus = PolygonMeshTorus(scene, detail = 20)
+    torus = PolygonMeshTorus(scene, detail = 80)
     transform = Transform(scene)
     material = Material(scene, xmlFile = 'Standard/Phong', shaderGroup = group, light = light)
     
