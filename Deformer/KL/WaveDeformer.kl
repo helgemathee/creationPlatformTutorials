@@ -9,7 +9,9 @@ operator WaveDeformerPerVertex(
   Vec3 axis,
   Vec3 center,
   Scalar amplitude,
-  Scalar frequency
+  Scalar frequency,
+  Scalar speed,
+  Scalar time
 )
 {
   Size index = i * 3;
@@ -26,7 +28,7 @@ operator WaveDeformerPerVertex(
   Scalar distance = axis.dot(localPos);
   Vec3 onAxisPos = center + axis * distance;
   localPos = pos - onAxisPos;
-  Scalar factor = sin(distance * frequency) * amplitude;
+  Scalar factor = sin(distance * frequency + time * speed) * amplitude;
   localPos *= 1.0 + factor;
   pos = onAxisPos + localPos;
   
@@ -42,7 +44,9 @@ operator WaveDeformer(
   io Vec3 axis,
   io Vec3 center,
   io Scalar amplitude,
-  io Scalar frequency
+  io Scalar frequency,
+  io Scalar speed,
+  io Scalar time
 ) {
 
   // pull out positions data
@@ -58,7 +62,9 @@ operator WaveDeformer(
     axis,
     center,
     amplitude,
-    frequency
+    frequency,
+    speed,
+    time
   );
   
   // push back the positions data

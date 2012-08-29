@@ -4,6 +4,7 @@ from FabricEngine.CreationPlatform.Nodes.Kinematics import *
 from FabricEngine.CreationPlatform.Nodes.Lights import *
 from FabricEngine.CreationPlatform.Nodes.Rendering import *
 from FabricEngine.CreationPlatform.Nodes.Manipulation import *
+from FabricEngine.CreationPlatform.Nodes.Animation import *
 from FabricEngine.CreationPlatform.Nodes.Geometry.StructuredGeometryComponents.DeformComponentImpl import DeformComponent
 from FabricEngine.CreationPlatform.RT.Math import *
 
@@ -16,6 +17,8 @@ class WaveDeformComponent(DeformComponent):
     options.setdefault('center', Vec3(0.0, 0.0, 0.0))
     options.setdefault('amplitude', 0.2)
     options.setdefault('frequency', 3.0)
+    options.setdefault('speed', 5.0)
+    options.setdefault('timeNode', None)
     
   def apply(self, node):
     
@@ -24,6 +27,17 @@ class WaveDeformComponent(DeformComponent):
       raise Exception("Node not of type PolygonMesh!")
 
     super(WaveDeformComponent, self).apply(node)
+    
+    # take care of the time reference interface
+    if not node.getReferenceMap().has_key('WaveDeformTime'):
+      node.addReferenceInterface('WaveDeformTime', 'Time', True)
+      
+    # check if we have a timenode setup already
+    if not node.hasWaveDeformTimeNode():
+      timeNode = self._getOption('timeNode')
+      if timeNode is None or not timeNode.isTypeOf('Time'):
+        raise Exception("timeNode not specified or of wrong type!")
+      node.setWaveDeformTimeNode(timeNode)
     
     # construct a unique name
     name = self._getOption('name') + str(node.getNumComponents()) + '_'
@@ -36,12 +50,17 @@ class WaveDeformComponent(DeformComponent):
     dgNode.addMember(name + 'center', 'Vec3', self._getOption('center'))
     dgNode.addMember(name + 'amplitude', 'Scalar', self._getOption('amplitude'))
     dgNode.addMember(name + 'frequency', 'Scalar', self._getOption('frequency'))
+    dgNode.addMember(name + 'speed', 'Scalar', self._getOption('speed'))
     
     # add interfaces
     self._addMemberInterface(dgNode, name+'axis', True)
     self._addMemberInterface(dgNode, name+'center', True)
     self._addMemberInterface(dgNode, name+'amplitude', True)
     self._addMemberInterface(dgNode, name+'frequency', True)
+    self._addMemberInterface(dgNode, name+'speed', True)
+    
+    # connect the time up
+    dgNode.setDependency(node.getWaveDeformTimeNode().getDGNode(), 'waveDeformTime')
     
     # bind the operator
     node.bindDGOperator(
@@ -53,7 +72,9 @@ class WaveDeformComponent(DeformComponent):
         'self.'+name+'axis',
         'self.'+name+'center',
         'self.'+name+'amplitude',
-        'self.'+name+'frequency'
+        'self.'+name+'frequency',
+        'self.'+name+'speed',
+        'waveDeformTime.time'
       ],
       fileName = FabricEngine.CreationPlatform.buildAbsolutePath('KL', 'WaveDeformer.kl')
     )
@@ -93,8 +114,12 @@ class MyApp(Basic3DDemoApplication):
       material = material
     )
     
+    timeNode = scene.getNode('GlobalTime')
+    
     # apply wave deforms
-    deformer = WaveDeformComponent()
+    deformer = WaveDeformComponent(timeNode = timeNode)
+    torus.addComponent(deformer)
+    deformer = WaveDeformComponent(axis = Vec3(0, 0, 1))
     torus.addComponent(deformer)
     
     self.constructionCompleted()
