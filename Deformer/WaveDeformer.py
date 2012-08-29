@@ -4,10 +4,10 @@ from FabricEngine.CreationPlatform.Nodes.Kinematics import *
 from FabricEngine.CreationPlatform.Nodes.Lights import *
 from FabricEngine.CreationPlatform.Nodes.Rendering import *
 from FabricEngine.CreationPlatform.Nodes.Manipulation import *
-from FabricEngine.CreationPlatform.Nodes import Component
+from FabricEngine.CreationPlatform.Nodes.Geometry.StructuredGeometryComponents.DeformComponentImpl import DeformComponent
 from FabricEngine.CreationPlatform.RT.Math import *
 
-class WaveDeformComponent(Component):
+class WaveDeformComponent(DeformComponent):
   
   def _setDefaultOptions(self, options):
     super(WaveDeformComponent, self)._setDefaultOptions(options)
@@ -18,10 +18,12 @@ class WaveDeformComponent(Component):
     options.setdefault('frequency', 1.0)
     
   def apply(self, node):
-    super(WaveDeformComponent, self).apply(node)
     
+    # ensure that we apply this component to a polygonmesh only
     if not node.isTypeOf('PolygonMesh'):
       raise Exception("Node not of type PolygonMesh!")
+
+    super(WaveDeformComponent, self).apply(node)
     
     # construct a unique name
     name = self._getOption('name') + str(node.getNumComponents()) + '_'
