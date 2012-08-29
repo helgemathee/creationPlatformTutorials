@@ -1,8 +1,40 @@
-
-
 use PolygonMeshRT;
 use GeometryAttributesRT;
 use Vec3;
+
+operator WaveDeformerPerVertex(
+  Index i,
+  ScalarAttribute originalPositions,
+  io Scalar positions[],
+  Vec3 axis,
+  Vec3 center,
+  Scalar amplitude,
+  Scalar frequency
+)
+{
+  Size index = i * 3;
+  
+  // pull out a single positions
+  Vec3 pos(
+    originalPositions.data[index+0],
+    originalPositions.data[index+1],
+    originalPositions.data[index+2]
+  );
+  
+  // compute some wave deformation
+  Vec3 localPos = pos - center;
+  Scalar distance = axis.dot(localPos);
+  Vec3 onAxisPos = center + axis * distance;
+  localPos = pos - onAxisPos;
+  Scalar factor = sin(distance * frequency) * amplitude;
+  localPos *= 1.0 + factor;
+  pos = onAxisPos + localPos;
+  
+  // push back a single position
+  positions[index+0] = pos.x;
+  positions[index+1] = pos.y;
+  positions[index+2] = pos.z;
+}
 
 operator WaveDeformer(
   io PolygonMesh mesh,
@@ -14,29 +46,20 @@ operator WaveDeformer(
 ) {
 
   // pull out positions data
-  Scalar positions[] = attributes.scalarAttributes[Attribute_Pos].data;
+  Scalar positions[];
+  positions.resize(attributes.size() * 3);
   
-  for(Size i=0; i < attributes.size(); i++) {
-    
-    Size index = i * 3;
-    
-    // pull out a single positions
-    Vec3 pos(positions[index+0],positions[index+1],positions[index+2]);
-    
-    // compute some wave deformation
-    Vec3 localPos = pos - center;
-    Scalar distance = axis.dot(localPos);
-    Vec3 onAxisPos = center + axis * distance;
-    localPos = pos - onAxisPos;
-    Scalar factor = sin(distance * frequency) * amplitude;
-    localPos *= 1.0 + factor;
-    pos = onAxisPos + localPos;
-    
-    // push back a single position
-    positions[index+0] = pos.x;
-    positions[index+1] = pos.y;
-    positions[index+2] = pos.z;
-  }
+  // invoke multithreading
+  executeParallel(
+    WaveDeformerPerVertex,
+    attributes.size(),
+    attributes.scalarAttributes[Attribute_Pos],
+    positions,
+    axis,
+    center,
+    amplitude,
+    frequency
+  );
   
   // push back the positions data
   attributes.scalarAttributes[Attribute_Pos].data = positions;
