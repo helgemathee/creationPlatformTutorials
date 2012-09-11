@@ -28,6 +28,11 @@
 #include <xsi_indexset.h>
 #include <xsi_dataarray.h>
 #include <xsi_dataarray2D.h>
+#include <xsi_customproperty.h>
+#include <xsi_ppglayout.h>
+#include <xsi_menu.h>
+#include <xsi_selection.h>
+#include <vector>
 
 // Fabric Engine Includes
 #include <FabricEngine/Core.h>
@@ -35,217 +40,556 @@
 // Defines port, group and map identifiers used for registering the ICENode
 enum IDs
 {
-	ID_IN_scalar = 0,
-	ID_IN_vec3 = 1,
-	ID_IN_quat = 2,
-	ID_IN_xfo = 3,
-	ID_IN_scalarArray = 4,
-	ID_IN_vec3Array = 5,
-	ID_G_100 = 100,
-	ID_G_101 = 101,
-	ID_G_102 = 102,
-	ID_G_103 = 103,
-	ID_G_104 = 104,
-	ID_G_105 = 105,
-	ID_OUT_result = 200,
-	ID_TYPE_CNS = 400,
-	ID_STRUCT_CNS,
-	ID_CTXT_CNS,
-	ID_UNDEF = ULONG_MAX
+  ID_IN_entryFunction = 0,
+  ID_IN_sourceCode = 1,
+  ID_IN_scalar = 2,
+  ID_IN_vec = 3,
+  ID_IN_quat = 4,
+  ID_G_100 = 100,
+  ID_G_101 = 101,
+  ID_G_102 = 102,
+  ID_G_103 = 103,
+  ID_G_104 = 104,
+  ID_G_105 = 105,
+  ID_OUT_result = 200,
+  ID_TYPE_CNS = 400,
+  ID_STRUCT_CNS,
+  ID_CTXT_CNS,
+  ID_UNDEF = ULONG_MAX
 };
 
 XSI::CStatus Register_FEDeformer( XSI::PluginRegistrar& in_reg );
 
 using namespace XSI; 
 
-struct FabricEngineUserData {
-   FabricEngine::Core::Client * client;
+struct FEDeformerUserData {
+  FabricEngine::Core::DGNode resultNode;
+  FabricEngine::Core::DGOperator op;
+  bool valid;
+  std::string entryFunction;
+  std::string sourceCode;
 };
+
+// static attributes
+FabricEngine::Core::Client gClient;
+std::vector<FabricEngine::Core::DGNode> gScalarNodes;
+std::vector<FabricEngine::Core::DGNode> gVecNodes;
+std::vector<FabricEngine::Core::DGNode> gQuatNodes;
+ULONG gInstanceCount = 0;
+
+CStatus initFabricEngineClient(FEDeformerUserData * usrData)
+{
+  // check if we have the necessary environment variables
+  if(gInstanceCount == 0)
+  {
+    // create the client
+    gClient = FabricEngine::Core::Client(true);
+
+    std::string cpDir = getenv("FABRIC_CREATIONPLATFORM_DIR");
+    if(cpDir.length() == 0)
+    {
+      Application().LogMessage(L"Environment variable FABRIC_CREATIONPLATFORM_DIR not defined!", siErrorMsg);
+      return CStatus::Unexpected;
+    }
+
+    // load the types
+    std::string mathDir = cpDir + "\\Python\\SceneGraph\\RT\\Math\\";
+    std::string klPath;
+    FILE * klFile = NULL;
+
+    // vec3
+    klPath = mathDir + "Vec3.kl";
+    klFile = fopen(klPath.c_str(), "rb");
+    if(klFile == NULL)
+    {
+      Application().LogMessage(L"KL file for Vec3 not found!", siErrorMsg);
+      return CStatus::Unexpected;
+    }
+    else
+    {
+      fclose(klFile);
+      FabricEngine::Core::RTStructMemberInfo members[3] =
+      {
+        { "x", "Float32" },
+        { "y", "Float32" },
+        { "z", "Float32" }
+      };
+      FabricEngine::Core::RegisterStruct(
+        gClient,
+        "Vec3",
+        3,
+        members,
+        klPath.c_str(),
+        ""
+      );
+    }
+
+    // quat
+    klPath = mathDir + "Quat.kl";
+    klFile = fopen(klPath.c_str(), "rb");
+    if(klFile == NULL)
+    {
+      Application().LogMessage(L"KL file for Quat not found!", siErrorMsg);
+      return CStatus::Unexpected;
+    }
+    else
+    {
+      fclose(klFile);
+      FabricEngine::Core::RTStructMemberInfo members[2] =
+      {
+        { "v", "Vec3" },
+        { "w", "Float32" }
+      };
+      FabricEngine::Core::RegisterStruct(
+        gClient,
+        "Quat",
+        2,
+        members,
+        klPath.c_str(),
+        ""
+      );
+    }
+
+    // create all of the nodes
+    for(size_t i=1;i<11;i++)
+    {
+      // create the numbered names
+      CString scalarName = L"scalar"+CString(LONG(i));
+      CString vecName = L"vec"+CString(LONG(i));
+      CString quatName = L"quat"+CString(LONG(i));
+
+      // create the nodes
+      FabricEngine::Core::DGNode scalarNode(gClient, scalarName.GetAsciiString());
+      FabricEngine::Core::DGNode vecNode(gClient, vecName.GetAsciiString());
+      FabricEngine::Core::DGNode quatNode(gClient, quatName.GetAsciiString());
+
+      // define the members on the node
+      scalarNode.addMember("data", "Float32");
+      vecNode.addMember("data", "Vec3");
+      quatNode.addMember("data", "Quat");
+
+      // put them into the static arrays
+      gScalarNodes.push_back(scalarNode);
+      gVecNodes.push_back(vecNode);
+      gQuatNodes.push_back(quatNode);
+    }
+  }
+
+  // create the result node
+  usrData->resultNode = FabricEngine::Core::DGNode(gClient, "result");
+  usrData->resultNode.addMember("data", "Vec3");
+
+  // create all of the nodes
+  for(size_t i=0;i<10;i++)
+  {
+    // create the numbered names
+    CString scalarName = L"scalar"+CString(LONG(i+1));
+    CString vecName = L"vec"+CString(LONG(i+1));
+    CString quatName = L"quat"+CString(LONG(i+1));
+
+    // setup dependencies
+    usrData->resultNode.setDependency(scalarName.GetAsciiString(), gScalarNodes[i]);
+    usrData->resultNode.setDependency(vecName.GetAsciiString(), gVecNodes[i]);
+    usrData->resultNode.setDependency(quatName.GetAsciiString(), gQuatNodes[i]);
+  }
+
+  // create the operator
+  usrData->valid = false;
+  CString opName = L"operator"+CString(LONG(gInstanceCount));
+  usrData->op = FabricEngine::Core::DGOperator(gClient, opName.GetAsciiString());
+
+  // create the parameterlayout
+  char const *parameterLayout[31] = { 
+    "scalar1.data", 
+    "scalar2.data", 
+    "scalar3.data", 
+    "scalar4.data", 
+    "scalar5.data", 
+    "scalar6.data", 
+    "scalar7.data", 
+    "scalar8.data", 
+    "scalar9.data", 
+    "scalar10.data", 
+    "vec1.data", 
+    "vec2.data", 
+    "vec3.data", 
+    "vec4.data", 
+    "vec5.data", 
+    "vec6.data", 
+    "vec7.data", 
+    "vec8.data", 
+    "vec9.data", 
+    "vec10.data", 
+    "quat1.data", 
+    "quat2.data", 
+    "quat3.data", 
+    "quat4.data", 
+    "quat5.data", 
+    "quat6.data", 
+    "quat7.data", 
+    "quat8.data", 
+    "quat9.data", 
+    "quat10.data", 
+    "self.data"
+  };
+
+  // create the binding and append it
+  FabricEngine::Core::DGBinding binding(
+    usrData->op,
+    31,
+    parameterLayout
+  );
+  usrData->resultNode.appendBinding( binding );
+
+  return CStatus::OK;
+}
 
 SICALLBACK XSILoadPlugin( PluginRegistrar& in_reg )
 {
-	in_reg.PutAuthor(L"Helge Mathee");
-	in_reg.PutName(L"FE Deformer Plugin");
-	in_reg.PutVersion(1,0);
+  in_reg.PutAuthor(L"Helge Mathee");
+  in_reg.PutName(L"FE Deformer Plugin");
+  in_reg.PutVersion(1,0);
 
-	Register_FEDeformer( in_reg );
+  Register_FEDeformer( in_reg );
+	in_reg.RegisterProperty(L"FESourceCode");
+	in_reg.RegisterMenu(siMenuTbGetPropertyID,L"FESourceCode_Menu",false,false);
 
-	return CStatus::OK;
+  return CStatus::OK;
 }
 
 SICALLBACK XSIUnloadPlugin( const PluginRegistrar& in_reg )
 {
-	CString strPluginName;
-	strPluginName = in_reg.GetName();
-	Application().LogMessage(strPluginName + L" has been unloaded.",siVerboseMsg);
-	return CStatus::OK;
+  CString strPluginName;
+  strPluginName = in_reg.GetName();
+  Application().LogMessage(strPluginName + L" has been unloaded.",siVerboseMsg);
+  return CStatus::OK;
 }
 
 CStatus Register_FEDeformer( PluginRegistrar& in_reg )
 {
-	ICENodeDef nodeDef;
-	nodeDef = Application().GetFactory().CreateICENodeDef(L"FEDeformer",L"FEDeformer");
+  ICENodeDef nodeDef;
+  nodeDef = Application().GetFactory().CreateICENodeDef(L"FEDeformer",L"FEDeformer");
 
-	CStatus st;
-	st = nodeDef.PutColor(73,143,187);
-	st.AssertSucceeded( ) ;
+  CStatus st;
+  st = nodeDef.PutColor(73,143,187);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.PutThreadingModel(XSI::siICENodeSingleThreading);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.PutThreadingModel(XSI::siICENodeSingleThreading);
+  st.AssertSucceeded( ) ;
 
-	// Add input ports and groups.
-	st = nodeDef.AddPortGroup(ID_G_100, 1, 10);
-	st.AssertSucceeded( ) ;
+  // Add input ports and groups.
+  st = nodeDef.AddPortGroup(ID_G_100);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddPortGroup(ID_G_101, 1, 10);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddPortGroup(ID_G_101, 1, 10);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddPortGroup(ID_G_102, 1, 10);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddPortGroup(ID_G_102, 1, 10);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddPortGroup(ID_G_103, 1, 10);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddPortGroup(ID_G_103, 1, 10);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddPortGroup(ID_G_104, 1, 10);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddPortGroup(ID_G_104, 1, 10);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddPortGroup(ID_G_105, 1, 10);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddPortGroup(ID_G_105, 1, 10);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddInputPort(ID_IN_scalar,ID_G_100,siICENodeDataFloat,siICENodeStructureSingle,siICENodeContextAny,L"scalar",L"scalar",0,CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddInputPort(ID_IN_entryFunction,ID_G_100,siICENodeDataString,siICENodeStructureSingle,siICENodeContextSingleton,L"entryFunction",L"entryFunction",CValue(),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddInputPort(ID_IN_vec3,ID_G_101,siICENodeDataVector3,siICENodeStructureSingle,siICENodeContextAny,L"vec3",L"vec3",MATH::CVector3f(1.0,1.0,1.0),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddInputPort(ID_IN_sourceCode,ID_G_100,siICENodeDataString,siICENodeStructureSingle,siICENodeContextSingleton,L"sourceCode",L"sourceCode",CValue(),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddInputPort(ID_IN_quat,ID_G_102,siICENodeDataQuaternion,siICENodeStructureSingle,siICENodeContextAny,L"quat",L"quat",MATH::CQuaternionf(1.0,1.0,1.0,1.0),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddInputPort(ID_IN_scalar,ID_G_101,siICENodeDataFloat,siICENodeStructureSingle,siICENodeContextAny,L"scalar",L"scalar",0,CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddInputPort(ID_IN_xfo,ID_G_103,siICENodeDataMatrix44,siICENodeStructureSingle,siICENodeContextAny,L"xfo",L"xfo",MATH::CMatrix4f(1.0,0.0,0.0,1.0, 0.0,1.0,0.0,1.0, 0.0,0.0,1.0,1.0, 0.0,0.0,0.0,1.0 ),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddInputPort(ID_IN_vec,ID_G_102,siICENodeDataVector3,siICENodeStructureSingle,siICENodeContextAny,L"vec",L"vec",MATH::CVector3f(1.0,1.0,1.0),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddInputPort(ID_IN_scalarArray,ID_G_104,siICENodeDataFloat,siICENodeStructureArray,siICENodeContextAny,L"scalarArray",L"scalarArray",0,CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
-	st.AssertSucceeded( ) ;
+  st = nodeDef.AddInputPort(ID_IN_quat,ID_G_103,siICENodeDataQuaternion,siICENodeStructureSingle,siICENodeContextAny,L"quat",L"quat",MATH::CQuaternionf(1.0,1.0,1.0,1.0),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
+  st.AssertSucceeded( ) ;
 
-	st = nodeDef.AddInputPort(ID_IN_vec3Array,ID_G_105,siICENodeDataVector3,siICENodeStructureArray,siICENodeContextAny,L"vec3Array",L"vec3Array",MATH::CVector3f(1.0,1.0,1.0),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
-	st.AssertSucceeded( ) ;
+  // Add output ports.
+  st = nodeDef.AddOutputPort(ID_OUT_result,siICENodeDataVector3,siICENodeStructureSingle,siICENodeContextComponent0D,L"result",L"result",ID_UNDEF,ID_UNDEF,ID_UNDEF);
+  st.AssertSucceeded( ) ;
 
-	// Add output ports.
-	st = nodeDef.AddOutputPort(ID_OUT_result,siICENodeDataVector3,siICENodeStructureSingle,siICENodeContextComponent0D,L"result",L"result",ID_UNDEF,ID_UNDEF,ID_UNDEF);
-	st.AssertSucceeded( ) ;
+  PluginItem nodeItem = in_reg.RegisterICENode(nodeDef);
+  nodeItem.PutCategories(L"Fabric Engine");
 
-	PluginItem nodeItem = in_reg.RegisterICENode(nodeDef);
-	nodeItem.PutCategories(L"Fabric Engine");
-
-	return CStatus::OK;
+  return CStatus::OK;
 }
 
 
 SICALLBACK FEDeformer_Evaluate( ICENodeContext& in_ctxt )
 {
-	// The current output port being evaluated...
-	ULONG out_portID = in_ctxt.GetEvaluatedOutputPortID( );
+  // check if we have a client
+  if(gInstanceCount == 0)
+    return CStatus::OK;
+
+  // ensure to have a valid userdata
+  CValue val = in_ctxt.GetUserData();
+  FEDeformerUserData * usrData = (FEDeformerUserData*)(CValue::siPtrType)val;
+  if(usrData == NULL)
+    return CStatus::OK;
+
+  // check the operator
+  std::string entryFunction = CDataArrayString(in_ctxt, ID_IN_entryFunction)[0].GetAsciiString();
+  std::string sourceCode = CDataArrayString(in_ctxt, ID_IN_sourceCode)[0].GetAsciiString();
+  if(usrData->entryFunction != entryFunction || usrData->sourceCode != sourceCode)
+  {
+    // replace $PARAMS with the parameter list
+    sourceCode = "require Vec3;\nrequire Quat;\n\n" + sourceCode;
+    CStringArray sourceCodeParts = CString(sourceCode.c_str()).Split(L"$PARAMS");
+    sourceCode = sourceCodeParts[0].GetAsciiString();
+    if(sourceCodeParts.GetCount() > 1)
+    {
+      CString paramList = L"\n  io Scalar scalar1<>,\n  io Scalar scalar2<>,\n  io Scalar scalar3<>,\n  io Scalar scalar4<>,\n  io Scalar scalar5<>,\n"; 
+      paramList += L"  io Scalar scalar6<>,\n  io Scalar scalar7<>,\n  io Scalar scalar8<>,\n  io Scalar scalar9<>,\n  io Scalar scalar10<>,\n"; 
+      paramList += L"  io Vec3 vec1<>,\n  io Vec3 vec2<>,\n  io Vec3 vec3<>,\n  io Vec3 vec4<>,\n  io Vec3 vec5<>,\n"; 
+      paramList += L"  io Vec3 vec6<>,\n  io Vec3 vec7<>,\n  io Vec3 vec8<>,\n  io Vec3 vec9<>,\n  io Vec3 vec10<>,\n"; 
+      paramList += L"  io Quat quat1<>,\n  io Quat quat2<>,\n  io Quat Quat<>,\n  io Quat quat4<>,\n  io Quat quat5<>,\n"; 
+      paramList += L"  io Quat quat6<>,\n  io Quat quat7<>,\n  io Quat quat8<>,\n  io Quat quat9<>,\n  io Quat quat10<>,\n"; 
+      paramList += L"  io Vec3 result<>\n";
+
+      for(LONG i=1;i<sourceCodeParts.GetCount();i++)
+      {
+        sourceCode += paramList.GetAsciiString();
+        sourceCode += sourceCodeParts[i].GetAsciiString();
+      }
+    }
+
+    // remove the binding if required
+    if(!usrData->op.isValid())
+    {
+    }
+  }
+
+  // The current output port being evaluated...
+  ULONG out_portID = in_ctxt.GetEvaluatedOutputPortID( );
   
-	switch( out_portID )
-	{		
-		case ID_OUT_result :
-		{
-			// Get the output port array ...			
-			CDataArrayVector3f outData( in_ctxt );
-			
- 			// Get the input data buffers for each port
-			CDataArrayFloat scalarData( in_ctxt, ID_IN_scalar );
-			CDataArrayVector3f vec3Data( in_ctxt, ID_IN_vec3 );
-			CDataArrayQuaternionf quatData( in_ctxt, ID_IN_quat );
-			CDataArrayMatrix4f xfoData( in_ctxt, ID_IN_xfo );
-			CDataArray2DFloat scalarArrayData( in_ctxt, ID_IN_scalarArray );
-			CDataArray2DVector3f vec3ArrayData( in_ctxt, ID_IN_vec3Array );
+  switch( out_portID )
+  {    
+    case ID_OUT_result :
+    {
+      // Get the output port array ...      
+      CDataArrayVector3f outData( in_ctxt );
 
- 			// We need a CIndexSet to iterate over the data 		
+      // get the number of input data
+      ULONG numScalars = 0;
+      in_ctxt.GetGroupInstanceCount(ID_G_101, numScalars);
+      ULONG numVecs = 0;
+      in_ctxt.GetGroupInstanceCount(ID_G_102, numVecs);
+      ULONG numQuats = 0;
+      in_ctxt.GetGroupInstanceCount(ID_G_103, numQuats);
 
-			// Note: Specific CIndexSet for scalar is required in single-threading mode			
-			CIndexSet scalarIndexSet( in_ctxt, ID_IN_scalar );
-			for(CIndexSet::Iterator itscalar = scalarIndexSet.Begin(); itscalar.HasNext(); itscalar.Next())
-			{
-				Application().LogMessage( CString( scalarData[ itscalar ] ) );
-			}
+      // copy all scalar data
+      for(ULONG i=0;i<numScalars;i++)
+      {
+        CDataArrayFloat data( in_ctxt, ID_IN_scalar, i);
+        uint32_t size = data.IsConstant() ? 1 : data.GetCount();
+        gScalarNodes[i].setSize(size);
+        gScalarNodes[i].setMemberAllSlicesData("data", sizeof(float) * size, &data[0]);
+      }
 
-			// Note: Specific CIndexSet for vec3 is required in single-threading mode			
-			CIndexSet vec3IndexSet( in_ctxt, ID_IN_vec3 );
-			for(CIndexSet::Iterator itvec3 = vec3IndexSet.Begin(); itvec3.HasNext(); itvec3.Next())
-			{
-				Application().LogMessage( CString( vec3Data[ itvec3 ] ) );
-			}
+      // copy all vector data
+      for(ULONG i=0;i<numVecs;i++)
+      {
+        CDataArrayVector3f data( in_ctxt, ID_IN_vec, i);
+        uint32_t size = data.IsConstant() ? 1 : data.GetCount();
+        gVecNodes[i].setSize(size);
+        gVecNodes[i].setMemberAllSlicesData("data", sizeof(float) * 3 * size, &data[0]);
+      }
 
-			// Note: Specific CIndexSet for quat is required in single-threading mode			
-			CIndexSet quatIndexSet( in_ctxt, ID_IN_quat );
-			for(CIndexSet::Iterator itquat = quatIndexSet.Begin(); itquat.HasNext(); itquat.Next())
-			{
-				Application().LogMessage( CString( quatData[ itquat ] ) );
-			}
+      // copy all quaternion data
+      for(ULONG i=0;i<numVecs;i++)
+      {
+        CDataArrayQuaternionf data( in_ctxt, ID_IN_quat, i);
+        uint32_t size = data.IsConstant() ? 1 : data.GetCount();
+        gQuatNodes[i].setSize(size);
+        gQuatNodes[i].setMemberAllSlicesData("data", sizeof(float) * 4 * size, &data[0]);
+      }
 
-			// Note: Specific CIndexSet for xfo is required in single-threading mode			
-			CIndexSet xfoIndexSet( in_ctxt, ID_IN_xfo );
-			for(CIndexSet::Iterator itxfo = xfoIndexSet.Begin(); itxfo.HasNext(); itxfo.Next())
-			{
-				Application().LogMessage( CString( xfoData[ itxfo ] ) );
-			}
+      // evaluate the node
+      uint32_t size = outData.GetCount();
+      usrData->resultNode.setSize(size);
+      if(usrData->valid)
+        usrData->resultNode.evaluate();
 
-			// Note: Specific CIndexSet for scalarArray is required in single-threading mode
-			CIndexSet scalarArrayIndexSet( in_ctxt, ID_IN_scalarArray );
-			for (CIndexSet::Iterator itscalarArray = scalarArrayIndexSet.Begin(); itscalarArray.HasNext(); itscalarArray.Next())
-			{
-				CDataArray2DFloat::Accessor scalarArraySubArray = scalarArrayData[itscalarArray];
-				for (ULONG i=0; i<scalarArraySubArray.GetCount( ); i++)
-				{
-					Application().LogMessage( CString( scalarArraySubArray[i] ) );
-				}
-			}
-
-			// Note: Specific CIndexSet for vec3Array is required in single-threading mode
-			CIndexSet vec3ArrayIndexSet( in_ctxt, ID_IN_vec3Array );
-			for (CIndexSet::Iterator itvec3Array = vec3ArrayIndexSet.Begin(); itvec3Array.HasNext(); itvec3Array.Next())
-			{
-				CDataArray2DVector3f::Accessor vec3ArraySubArray = vec3ArrayData[itvec3Array];
-				for (ULONG i=0; i<vec3ArraySubArray.GetCount( ); i++)
-				{
-					Application().LogMessage( CString( vec3ArraySubArray[i] ) );
-				}
-			}
-		}
-		break;
-		
-		// Other output ports...
-	};
-	
-	return CStatus::OK;
+      // copy the data out
+      usrData->resultNode.getMemberAllSlicesData("data", sizeof(float) * 3 * size, &outData[0]);
+    }
+    break;
+  };
+  
+  return CStatus::OK;
 }
 
 SICALLBACK FEDeformer_Init( CRef& in_ctxt )
 {
-	Context ctxt( in_ctxt );
+  Context ctxt( in_ctxt );
 
-   // allocate userdata
-   FabricEngineUserData * usrData = new FabricEngineUserData();
-   usrData->client = new FabricEngine::Core::Client(true);
+  // allocate userdata
+  FEDeformerUserData * usrData = new FEDeformerUserData();
 
-   CValue val = (CValue::siPtrType) usrData;
-   ctxt.PutUserData( val ) ;
+  // check we have a client
+  if(CStatus::OK != initFabricEngineClient(usrData))
+    return CStatus::Unexpected;
 
-	return CStatus::OK;
+  CValue val = (CValue::siPtrType) usrData;
+  ctxt.PutUserData( val );
+
+  gInstanceCount++;
+
+  return CStatus::OK;
 }
 
 SICALLBACK FEDeformer_Term( CRef& in_ctxt )
 {
+  Context ctxt( in_ctxt );
+
+  CValue val = ctxt.GetUserData();
+  FEDeformerUserData * usrData = (FEDeformerUserData*)(CValue::siPtrType)val;
+  if(usrData != NULL)
+  {
+    usrData->resultNode = FabricEngine::Core::DGNode();
+    delete(usrData);
+  }
+
+  gInstanceCount--;
+
+  if(gInstanceCount == 0)
+  {
+    gScalarNodes.clear();
+    gVecNodes.clear();
+    gQuatNodes.clear();
+    gClient = FabricEngine::Core::Client();
+  }
+
+  return CStatus::OK;
+}
+
+SICALLBACK FESourceCode_Define( CRef& in_ctxt )
+{
 	Context ctxt( in_ctxt );
+	CustomProperty oCustomProperty;
+	Parameter oParam;
+	oCustomProperty = ctxt.GetSource();
 
-   CValue val = ctxt.GetUserData();
-   FabricEngineUserData * usrData = (FabricEngineUserData*)(CValue::siPtrType)val;
+  oCustomProperty.AddParameter(L"EntryFunction",CValue::siString,siPersistable,L"",L"",L"myDeformer",oParam);
 
-   // free all objects
-   delete(usrData->client);
-   delete(usrData);
-
+  CString sampleSourceCode;
+  sampleSourceCode += "operator myDeformer($PARAMS) {\n";
+  sampleSourceCode += "  result = vector1;\n";
+  sampleSourceCode += L"}\n";
+  
+  oCustomProperty.AddParameter(L"SourceCode",CValue::siString,siPersistable,L"",L"",sampleSourceCode,oParam);
 	return CStatus::OK;
 }
 
+SICALLBACK FESourceCode_DefineLayout( CRef& in_ctxt )
+{
+	Context ctxt( in_ctxt );
+	PPGLayout oLayout;
+	PPGItem oItem;
+	oLayout = ctxt.GetSource();
+	oLayout.Clear();
+
+  // entry function field
+	oLayout.AddItem(L"EntryFunction");
+
+  // source code editor
+	oItem = oLayout.AddItem(L"SourceCode", L"SourceCode", siControlTextEditor);
+  CStringArray keyWords;
+  keyWords.Add(L"Boolean");
+  keyWords.Add(L"Integer");
+  keyWords.Add(L"Scalar");
+  keyWords.Add(L"Byte");
+  keyWords.Add(L"Vec3");
+  keyWords.Add(L"Quat");
+  keyWords.Add(L"in");
+  keyWords.Add(L"io");
+  keyWords.Add(L"require");
+  keyWords.Add(L"operator");
+  keyWords.Add(L"if");
+  keyWords.Add(L"for");
+  keyWords.Add(L"break");
+  keyWords.Add(L"continue");
+  keyWords.Add(L"while");
+  keyWords.Add(L"return");
+  keyWords.Add(L"report");
+  keyWords.Add(L"alias");
+  keyWords.Add(L"switch");
+  keyWords.Add(L"else");
+  keyWords.Add(L"true");
+  keyWords.Add(L"false");
+  keyWords.Add(L"case");
+  keyWords.Add(L"false");
+  keyWords.Add(L"const");
+  keyWords.Add(L"function");
+  keyWords.Add(L"default");
+  keyWords.Add(L"struct");
+  keyWords.Add(L"executeParallel");
+  CString keyWordStr = keyWords[0];
+  for(LONG i=0;i<keyWords.GetCount(); i++)
+    keyWordStr += L" " + keyWords[i];
+  oItem.PutAttribute( siUIKeywords, keyWordStr );
+  oItem.PutAttribute( siUICommentFont, "Verdana" );
+  oItem.PutAttribute( siUICommentColor, L"0xFF00FF" );
+  oItem.PutAttribute( siUIPreprocessorColor, L"0x808080" );
+  oItem.PutAttribute( siUIToolbar, true );
+  oItem.PutAttribute( siUICapability, siCanLoad );
+
+  return CStatus::OK;
+}
+
+SICALLBACK FESourceCode_Menu_Init( CRef& in_ctxt )
+{
+	Context ctxt( in_ctxt );
+	Menu oMenu;
+	oMenu = ctxt.GetSource();
+	MenuItem oNewItem;
+	oMenu.AddCallbackItem(L"FESourceCode",L"FESourceCodeMenuClicked",oNewItem);
+	return CStatus::OK;
+}
+
+SICALLBACK FESourceCodeMenuClicked( XSI::CRef& )
+{	
+	// We use the AddProp command rather than the C++ API
+	// because it logs in the script history and it
+	// automatically takes care of different selection possibilities.
+	
+	Application app;
+	CustomProperty prop;
+
+	CValueArray addpropArgs(5) ;
+	addpropArgs[0] = L"FESourceCode"; // Type of Property
+	addpropArgs[3] = L"FESourceCode"; // Name for the Property
+
+	// At this point you might want to validate what objects
+	// are selected to make sure they make sense for your
+	// property
+	if ( app.GetSelection().GetCount() == 0 )
+	{		
+		// No selection so create the object at the scene root
+		addpropArgs[1] = L"Scene_Root";
+	}
+
+	CValue retVal ;
+	CStatus st = app.ExecuteCommand( L"SIAddProp", addpropArgs, retVal ) ;
+
+	if ( st.Succeeded() )
+	{
+		// Inspect newly created Property or Properties
+		//(there could be more than one if the selection
+		// contains multiple items)
+		CValueArray resultArray( (CValueArray&)addpropArgs[4] );
+		CValueArray inspectobjArgs(5) ;
+		inspectobjArgs[0] = resultArray[0] ;
+        
+		app.ExecuteCommand( L"InspectObj", inspectobjArgs, retVal ) ;
+	}
+
+	return st ;
+}
