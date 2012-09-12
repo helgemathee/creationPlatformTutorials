@@ -49,8 +49,6 @@ enum IDs
   ID_G_101 = 101,
   ID_G_102 = 102,
   ID_G_103 = 103,
-  ID_G_104 = 104,
-  ID_G_105 = 105,
   ID_OUT_result = 200,
   ID_TYPE_CNS = 400,
   ID_STRUCT_CNS,
@@ -65,6 +63,7 @@ using namespace XSI;
 struct FEDeformerUserData {
   FabricEngine::Core::DGNode resultNode;
   FabricEngine::Core::DGOperator op;
+  FabricEngine::Core::DGBinding binding;
   bool valid;
   std::string entryFunction;
   std::string sourceCode;
@@ -77,6 +76,80 @@ std::vector<FabricEngine::Core::DGNode> gVecNodes;
 std::vector<FabricEngine::Core::DGNode> gQuatNodes;
 ULONG gInstanceCount = 0;
 
+std::string replaceStdString(std::string input, std::string search, std::string replacement)
+{
+  std::string::size_type pos = input.find(search, 0); 
+  int intLengthSearch = search.length(); 
+  int intLengthReplacment = replacement.length(); 
+
+  while(std::string::npos != pos) 
+  { 
+    input.replace(pos, intLengthSearch, replacement); 
+    pos = input.find(search, pos + intLengthReplacment); 
+  } 
+
+  return input; 
+}
+
+CStatus registerType(std::string name, FEDeformerUserData * usrData, size_t memberCount, const FabricEngine::Core::RTStructMemberInfo * members)
+{
+  std::string cpDir = getenv("FABRIC_CREATIONPLATFORM_DIR");
+  if(cpDir.length() == 0)
+  {
+    Application().LogMessage(L"Environment variable FABRIC_CREATIONPLATFORM_DIR not defined!", siErrorMsg);
+    return CStatus::Unexpected;
+  }
+
+  // load the types
+  std::string mathDir = cpDir + "\\Python\\SceneGraph\\RT\\Math\\";
+  std::string klPath;
+  FILE * klFile = NULL;
+
+  // math
+  klPath = mathDir + name + ".kl";
+  klFile = fopen(klPath.c_str(), "rb");
+  if(klFile == NULL)
+  {
+    std::string message = "KL file for "+name+" not found!";
+    Application().LogMessage(message.c_str(), siErrorMsg);
+    return CStatus::Unexpected;
+  }
+  else
+  {
+    fseek(klFile, 0, SEEK_END);
+    size_t size = ftell(klFile);
+    rewind(klFile);
+    char * sourceCodeChars = (char *)malloc(size+1);
+    sourceCodeChars[size] = '\0';
+    fread(sourceCodeChars, sizeof(char), size, klFile);
+    fclose(klFile);
+
+    std::string sourceCode = replaceStdString(sourceCodeChars, "REPORTWARNINGS", "false");
+
+    try
+    {
+      FabricEngine::Core::RegisterStruct(
+        gClient,
+        name.c_str(),
+        memberCount,
+        members,
+        std::string(name+".kl").c_str(),
+        sourceCode.c_str()
+      );
+    }
+    catch(FabricEngine::Core::Exception e)
+    {
+      std::string message = e.getStdString();
+      Application().LogMessage(L"FE Exception: "+CString(message.c_str()),siErrorMsg);
+      usrData->valid = false;
+    }
+
+    free(sourceCodeChars);
+  }
+
+  return CStatus::OK;
+}
+
 CStatus initFabricEngineClient(FEDeformerUserData * usrData)
 {
   // check if we have the necessary environment variables
@@ -85,70 +158,42 @@ CStatus initFabricEngineClient(FEDeformerUserData * usrData)
     // create the client
     gClient = FabricEngine::Core::Client(true);
 
-    std::string cpDir = getenv("FABRIC_CREATIONPLATFORM_DIR");
-    if(cpDir.length() == 0)
+    // define type members
+    FabricEngine::Core::RTStructMemberInfo Vec3Members[3] = {
+      { "x", "Float32" },
+      { "y", "Float32" },
+      { "z", "Float32" }
+    };
+    FabricEngine::Core::RTStructMemberInfo RotationOrderMembers[1] =
     {
-      Application().LogMessage(L"Environment variable FABRIC_CREATIONPLATFORM_DIR not defined!", siErrorMsg);
-      return CStatus::Unexpected;
-    }
+      { "order", "Integer" }
+    };
+    FabricEngine::Core::RTStructMemberInfo Mat33Members[3] =
+    {
+      { "row0", "Vec3" },
+      { "row1", "Vec3" },
+      { "row2", "Vec3" }
+    };
+    FabricEngine::Core::RTStructMemberInfo EulerMembers[4] =
+    {
+      { "x", "Scalar" },
+      { "y", "Scalar" },
+      { "z", "Scalar" },
+      { "ro", "RotationOrder" }
+    };
+    FabricEngine::Core::RTStructMemberInfo QuatMembers[2] =
+    {
+      { "v", "Vec3" },
+      { "w", "Float32" }
+    };
 
-    // load the types
-    std::string mathDir = cpDir + "\\Python\\SceneGraph\\RT\\Math\\";
-    std::string klPath;
-    FILE * klFile = NULL;
-
-    // vec3
-    klPath = mathDir + "Vec3.kl";
-    klFile = fopen(klPath.c_str(), "rb");
-    if(klFile == NULL)
-    {
-      Application().LogMessage(L"KL file for Vec3 not found!", siErrorMsg);
-      return CStatus::Unexpected;
-    }
-    else
-    {
-      fclose(klFile);
-      FabricEngine::Core::RTStructMemberInfo members[3] =
-      {
-        { "x", "Float32" },
-        { "y", "Float32" },
-        { "z", "Float32" }
-      };
-      FabricEngine::Core::RegisterStruct(
-        gClient,
-        "Vec3",
-        3,
-        members,
-        klPath.c_str(),
-        ""
-      );
-    }
-
-    // quat
-    klPath = mathDir + "Quat.kl";
-    klFile = fopen(klPath.c_str(), "rb");
-    if(klFile == NULL)
-    {
-      Application().LogMessage(L"KL file for Quat not found!", siErrorMsg);
-      return CStatus::Unexpected;
-    }
-    else
-    {
-      fclose(klFile);
-      FabricEngine::Core::RTStructMemberInfo members[2] =
-      {
-        { "v", "Vec3" },
-        { "w", "Float32" }
-      };
-      FabricEngine::Core::RegisterStruct(
-        gClient,
-        "Quat",
-        2,
-        members,
-        klPath.c_str(),
-        ""
-      );
-    }
+    // register all types
+    registerType("Math", usrData, 0, NULL);
+    registerType("Vec3", usrData, 3, Vec3Members);
+    registerType("RotationOrder", usrData, 1, RotationOrderMembers);
+    registerType("Mat33", usrData, 3, Mat33Members);
+    registerType("Euler", usrData, 4, EulerMembers);
+    registerType("Quat", usrData, 2, QuatMembers);
 
     // create all of the nodes
     for(size_t i=1;i<11;i++)
@@ -199,46 +244,48 @@ CStatus initFabricEngineClient(FEDeformerUserData * usrData)
   usrData->op = FabricEngine::Core::DGOperator(gClient, opName.GetAsciiString());
 
   // create the parameterlayout
-  char const *parameterLayout[31] = { 
-    "scalar1.data", 
-    "scalar2.data", 
-    "scalar3.data", 
-    "scalar4.data", 
-    "scalar5.data", 
-    "scalar6.data", 
-    "scalar7.data", 
-    "scalar8.data", 
-    "scalar9.data", 
-    "scalar10.data", 
-    "vec1.data", 
-    "vec2.data", 
-    "vec3.data", 
-    "vec4.data", 
-    "vec5.data", 
-    "vec6.data", 
-    "vec7.data", 
-    "vec8.data", 
-    "vec9.data", 
-    "vec10.data", 
-    "quat1.data", 
-    "quat2.data", 
-    "quat3.data", 
-    "quat4.data", 
-    "quat5.data", 
-    "quat6.data", 
-    "quat7.data", 
-    "quat8.data", 
-    "quat9.data", 
-    "quat10.data", 
+  char const *parameterLayout[32] = { 
+    "self.index",
+    "scalar1.data<>", 
+    "scalar2.data<>", 
+    "scalar3.data<>", 
+    "scalar4.data<>", 
+    "scalar5.data<>", 
+    "scalar6.data<>", 
+    "scalar7.data<>", 
+    "scalar8.data<>", 
+    "scalar9.data<>", 
+    "scalar10.data<>", 
+    "vec1.data<>", 
+    "vec2.data<>", 
+    "vec3.data<>", 
+    "vec4.data<>", 
+    "vec5.data<>", 
+    "vec6.data<>", 
+    "vec7.data<>", 
+    "vec8.data<>", 
+    "vec9.data<>", 
+    "vec10.data<>", 
+    "quat1.data<>", 
+    "quat2.data<>", 
+    "quat3.data<>", 
+    "quat4.data<>", 
+    "quat5.data<>", 
+    "quat6.data<>", 
+    "quat7.data<>", 
+    "quat8.data<>", 
+    "quat9.data<>", 
+    "quat10.data<>", 
     "self.data"
   };
 
   // create the binding and append it
   FabricEngine::Core::DGBinding binding(
     usrData->op,
-    31,
+    32,
     parameterLayout
   );
+  usrData->binding = binding;
   usrData->resultNode.appendBinding( binding );
 
   return CStatus::OK;
@@ -290,12 +337,6 @@ CStatus Register_FEDeformer( PluginRegistrar& in_reg )
   st = nodeDef.AddPortGroup(ID_G_103, 1, 10);
   st.AssertSucceeded( ) ;
 
-  st = nodeDef.AddPortGroup(ID_G_104, 1, 10);
-  st.AssertSucceeded( ) ;
-
-  st = nodeDef.AddPortGroup(ID_G_105, 1, 10);
-  st.AssertSucceeded( ) ;
-
   st = nodeDef.AddInputPort(ID_IN_entryFunction,ID_G_100,siICENodeDataString,siICENodeStructureSingle,siICENodeContextSingleton,L"entryFunction",L"entryFunction",CValue(),CValue(),CValue(),ID_UNDEF,ID_UNDEF,ID_UNDEF);
   st.AssertSucceeded( ) ;
 
@@ -337,34 +378,91 @@ SICALLBACK FEDeformer_Evaluate( ICENodeContext& in_ctxt )
   // check the operator
   std::string entryFunction = CDataArrayString(in_ctxt, ID_IN_entryFunction)[0].GetAsciiString();
   std::string sourceCode = CDataArrayString(in_ctxt, ID_IN_sourceCode)[0].GetAsciiString();
-  if(usrData->entryFunction != entryFunction || usrData->sourceCode != sourceCode)
+  if(usrData->entryFunction != entryFunction || usrData->sourceCode != sourceCode || !usrData->valid)
   {
-    // replace $PARAMS with the parameter list
-    sourceCode = "require Vec3;\nrequire Quat;\n\n" + sourceCode;
-    CStringArray sourceCodeParts = CString(sourceCode.c_str()).Split(L"$PARAMS");
-    sourceCode = sourceCodeParts[0].GetAsciiString();
-    if(sourceCodeParts.GetCount() > 1)
-    {
-      CString paramList = L"\n  io Scalar scalar1<>,\n  io Scalar scalar2<>,\n  io Scalar scalar3<>,\n  io Scalar scalar4<>,\n  io Scalar scalar5<>,\n"; 
-      paramList += L"  io Scalar scalar6<>,\n  io Scalar scalar7<>,\n  io Scalar scalar8<>,\n  io Scalar scalar9<>,\n  io Scalar scalar10<>,\n"; 
-      paramList += L"  io Vec3 vec1<>,\n  io Vec3 vec2<>,\n  io Vec3 vec3<>,\n  io Vec3 vec4<>,\n  io Vec3 vec5<>,\n"; 
-      paramList += L"  io Vec3 vec6<>,\n  io Vec3 vec7<>,\n  io Vec3 vec8<>,\n  io Vec3 vec9<>,\n  io Vec3 vec10<>,\n"; 
-      paramList += L"  io Quat quat1<>,\n  io Quat quat2<>,\n  io Quat Quat<>,\n  io Quat quat4<>,\n  io Quat quat5<>,\n"; 
-      paramList += L"  io Quat quat6<>,\n  io Quat quat7<>,\n  io Quat quat8<>,\n  io Quat quat9<>,\n  io Quat quat10<>,\n"; 
-      paramList += L"  io Vec3 result<>\n";
+    usrData->entryFunction = entryFunction;
+    usrData->sourceCode = sourceCode;
 
-      for(LONG i=1;i<sourceCodeParts.GetCount();i++)
-      {
-        sourceCode += paramList.GetAsciiString();
-        sourceCode += sourceCodeParts[i].GetAsciiString();
-      }
-    }
+    sourceCode = "require Vec3;require Quat;" + sourceCode;
+
+    std::string paramList = "Index index, io Scalar scalar1<>, io Scalar scalar2<>, io Scalar scalar3<>, io Scalar scalar4<>, io Scalar scalar5<>,"; 
+    paramList += " io Scalar scalar6<>, io Scalar scalar7<>, io Scalar scalar8<>, io Scalar scalar9<>, io Scalar scalar10<>,"; 
+    paramList += " io Vec3 vec1<>, io Vec3 vec2<>, io Vec3 vec3<>, io Vec3 vec4<>, io Vec3 vec5<>,"; 
+    paramList += " io Vec3 vec6<>, io Vec3 vec7<>, io Vec3 vec8<>, io Vec3 vec9<>, io Vec3 vec10<>,"; 
+    paramList += " io Quat quat1<>, io Quat quat2<>, io Quat Quat<>, io Quat quat4<>, io Quat quat5<>,"; 
+    paramList += " io Quat quat6<>, io Quat quat7<>, io Quat quat8<>, io Quat quat9<>, io Quat quat10<>,"; 
+    paramList += " io Vec3 result";
+    
+    sourceCode = replaceStdString(sourceCode, "$PARAMS", paramList);
 
     // remove the binding if required
-    if(!usrData->op.isValid())
+    std::string opName = usrData->op.getName().getStdString()+".kl";
+    usrData->op.setFilename(opName.c_str());
+    usrData->op.setSourceCode(sourceCode.c_str());
+    usrData->op.setEntryPoint(entryFunction.c_str());
+    usrData->valid = true;
+
+    // first check the dgnode
+    try
     {
+      FabricEngine::Core::String errors = usrData->resultNode.getErrors();
+      if(errors.isValid())
+      {
+        Application().LogMessage(L"FE Errors: "+CString(errors.getStdString().c_str()),siErrorMsg);
+        usrData->valid = false;
+      }
+    }
+    catch(FabricEngine::Core::Exception e)
+    {
+      std::string message = e.getStdString();
+      Application().LogMessage(L"FE Exception: "+CString(message.c_str()),siErrorMsg);
+      usrData->valid = false;
+    }
+
+    // then check the binding
+    try
+    {
+      FabricEngine::Core::String errors = usrData->binding.getErrors();
+      if(errors.isValid())
+      {
+        Application().LogMessage(L"FE Errors: "+CString(errors.getStdString().c_str()),siErrorMsg);
+        usrData->valid = false;
+      }
+    }
+    catch(FabricEngine::Core::Exception e)
+    {
+      std::string message = e.getStdString();
+      Application().LogMessage(L"FE Exception: "+CString(message.c_str()),siErrorMsg);
+      usrData->valid = false;
+    }
+
+    // check for errors
+    try
+    {
+      FabricEngine::Core::String errors = usrData->op.getErrors();
+      if(errors.isValid())
+      {
+        Application().LogMessage(L"FE Errors: "+CString(errors.getStdString().c_str()),siErrorMsg);
+        usrData->valid = false;
+      }
+      FabricEngine::Core::String diagnostics = usrData->op.getDiagnostics();
+      if(diagnostics.isValid())
+      {
+        Application().LogMessage(L"FE Errors: "+CString(diagnostics.getStdString().c_str()),siErrorMsg);
+        usrData->valid = false;
+      }
+    }
+    catch(FabricEngine::Core::Exception e)
+    {
+      std::string message = e.getStdString();
+      Application().LogMessage(L"FE Exception: "+CString(message.c_str()),siErrorMsg);
+      usrData->valid = false;
     }
   }
+
+  // ensure we don't run this on empty point clouds
+  if(in_ctxt.GetNumberOfElementsToProcess() == 0)
+    return CStatus::OK;
 
   // The current output port being evaluated...
   ULONG out_portID = in_ctxt.GetEvaluatedOutputPortID( );
@@ -375,6 +473,9 @@ SICALLBACK FEDeformer_Evaluate( ICENodeContext& in_ctxt )
     {
       // Get the output port array ...      
       CDataArrayVector3f outData( in_ctxt );
+      uint32_t outSize = in_ctxt.GetNumberOfElementsToProcess();
+	    if(outSize == 0)
+		    return CStatus::OK;
 
       // get the number of input data
       ULONG numScalars = 0;
@@ -388,37 +489,53 @@ SICALLBACK FEDeformer_Evaluate( ICENodeContext& in_ctxt )
       for(ULONG i=0;i<numScalars;i++)
       {
         CDataArrayFloat data( in_ctxt, ID_IN_scalar, i);
-        uint32_t size = data.IsConstant() ? 1 : data.GetCount();
-        gScalarNodes[i].setSize(size);
-        gScalarNodes[i].setMemberAllSlicesData("data", sizeof(float) * size, &data[0]);
+        uint32_t inSize = data.IsConstant() ? 1 : data.GetCount();
+        if(inSize == 0)
+          continue;
+        gScalarNodes[i].setSize(inSize);
+        gScalarNodes[i].setMemberAllSlicesData("data", sizeof(float) * inSize, &data[0]);
       }
 
       // copy all vector data
       for(ULONG i=0;i<numVecs;i++)
       {
         CDataArrayVector3f data( in_ctxt, ID_IN_vec, i);
-        uint32_t size = data.IsConstant() ? 1 : data.GetCount();
-        gVecNodes[i].setSize(size);
-        gVecNodes[i].setMemberAllSlicesData("data", sizeof(float) * 3 * size, &data[0]);
+        uint32_t inSize = data.IsConstant() ? 1 : data.GetCount();
+        if(inSize == 0)
+          continue;
+        gVecNodes[i].setSize(inSize);
+        gVecNodes[i].setMemberAllSlicesData("data", sizeof(float) * 3 * inSize, &data[0]);
       }
 
       // copy all quaternion data
-      for(ULONG i=0;i<numVecs;i++)
+      for(ULONG i=0;i<numQuats;i++)
       {
         CDataArrayQuaternionf data( in_ctxt, ID_IN_quat, i);
-        uint32_t size = data.IsConstant() ? 1 : data.GetCount();
-        gQuatNodes[i].setSize(size);
-        gQuatNodes[i].setMemberAllSlicesData("data", sizeof(float) * 4 * size, &data[0]);
+        uint32_t inSize = data.IsConstant() ? 1 : data.GetCount();
+        if(inSize == 0)
+          continue;
+        gQuatNodes[i].setSize(inSize);
+        gQuatNodes[i].setMemberAllSlicesData("data", sizeof(float) * 4 * inSize, &data[0]);
       }
 
       // evaluate the node
-      uint32_t size = outData.GetCount();
-      usrData->resultNode.setSize(size);
+      usrData->resultNode.setSize(outSize);
       if(usrData->valid)
-        usrData->resultNode.evaluate();
+      {
+        try
+        {
+          usrData->resultNode.evaluate();
+        }
+        catch(FabricEngine::Core::Exception e)
+        {
+          std::string message = e.getStdString();
+          Application().LogMessage(L"FE Exception: "+CString(message.c_str()),siErrorMsg);
+          usrData->valid = false;
+        }
+      }
 
       // copy the data out
-      usrData->resultNode.getMemberAllSlicesData("data", sizeof(float) * 3 * size, &outData[0]);
+      usrData->resultNode.getMemberAllSlicesData("data", sizeof(float) * 3 * outSize, &outData[0]);
     }
     break;
   };
@@ -454,6 +571,8 @@ SICALLBACK FEDeformer_Term( CRef& in_ctxt )
   if(usrData != NULL)
   {
     usrData->resultNode = FabricEngine::Core::DGNode();
+    usrData->op = FabricEngine::Core::DGOperator();
+    usrData->binding = FabricEngine::Core::DGBinding();
     delete(usrData);
   }
 
@@ -465,6 +584,7 @@ SICALLBACK FEDeformer_Term( CRef& in_ctxt )
     gVecNodes.clear();
     gQuatNodes.clear();
     gClient = FabricEngine::Core::Client();
+    FabricEngine::Core::Finalize();
   }
 
   return CStatus::OK;
@@ -481,7 +601,7 @@ SICALLBACK FESourceCode_Define( CRef& in_ctxt )
 
   CString sampleSourceCode;
   sampleSourceCode += "operator myDeformer($PARAMS) {\n";
-  sampleSourceCode += "  result = vector1;\n";
+  sampleSourceCode += "  result = vec1[index];\n";
   sampleSourceCode += L"}\n";
   
   oCustomProperty.AddParameter(L"SourceCode",CValue::siString,siPersistable,L"",L"",sampleSourceCode,oParam);
@@ -540,6 +660,7 @@ SICALLBACK FESourceCode_DefineLayout( CRef& in_ctxt )
   oItem.PutAttribute( siUIPreprocessorColor, L"0x808080" );
   oItem.PutAttribute( siUIToolbar, true );
   oItem.PutAttribute( siUICapability, siCanLoad );
+  oItem.PutAttribute( siUILineNumbering, true);
 
   return CStatus::OK;
 }
