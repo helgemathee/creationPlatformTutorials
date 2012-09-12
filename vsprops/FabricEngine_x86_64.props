@@ -6,11 +6,11 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>$(FABRIC_CAPI_DIR)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FEC_STATIC;FEC_PROVIDE_STL_BINDINGS;__STDC_LIMIT_MACROS;__STDC_CONSTANT_MACROS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FEC_SHARED;FEC_PROVIDE_STL_BINDINGS;__STDC_LIMIT_MACROS;__STDC_CONSTANT_MACROS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(FABRIC_CAPI_DIR)/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>FabricCore.lib;LLVMX86Desc.lib;LLVMBitWriter.lib;LLVMBitReader.lib;LLVMipo.lib;LLVMAsmParser.lib;LLVMX86AsmPrinter.lib;LLVMAsmPrinter.lib;LLVMX86CodeGen.lib;LLVMX86Info.lib;LLVMInstCombine.lib;LLVMSelectionDAG.lib;LLVMX86AsmPrinter.lib;LLVMAsmPrinter.lib;LLVMX86Utils.lib;LLVMMCParser.lib;LLVMJIT.lib;LLVMCodeGen.lib;LLVMExecutionEngine.lib;LLVMScalarOpts.lib;LLVMTransformUtils.lib;LLVMipa.lib;LLVMAnalysis.lib;LLVMTarget.lib;LLVMMC.lib;LLVMCore.lib;LLVMSupport.lib;md5-1.4.lib;advapi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>FabricEngineCore-1.4.lib;advapi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup />
