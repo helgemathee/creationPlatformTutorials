@@ -51,7 +51,7 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
-      <OutputFile>.\bin\nt-x86-64\FEDeformer.dll</OutputFile>
+      <OutputFile>.\bin\nt-x86-64\FEICENode.dll</OutputFile>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
@@ -61,11 +61,11 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
-      <OutputFile>.\bin\nt-x86-64\FEDeformer.dll</OutputFile>
+      <OutputFile>.\bin\nt-x86-64\FEICENode.dll</OutputFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="FEDeformer.cpp" />
+    <ClCompile Include="FEICENode.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

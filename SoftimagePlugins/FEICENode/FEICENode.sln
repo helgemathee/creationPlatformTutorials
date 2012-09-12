@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FEDeformer", "FEDeformer.vcxproj", "{38E3212A-A328-4C37-BF8A-E748D81548F9}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FEICENode", "FEICENode.vcxproj", "{38E3212A-A328-4C37-BF8A-E748D81548F9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
