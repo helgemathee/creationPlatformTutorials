@@ -1,11 +1,10 @@
-use PolygonMeshRT;
 use GeometryAttributesRT;
+use PolygonMeshRT;
 use Vec3;
 
 operator WaveDeformerPerVertex(
   Index i,
-  ScalarAttribute originalPositions,
-  io Scalar positions[],
+  io Vec3 positions[],
   Vec3 axis,
   Vec3 center,
   Scalar amplitude,
@@ -14,15 +13,8 @@ operator WaveDeformerPerVertex(
   Scalar time
 )
 {
-  Size index = i * 3;
-  
-  // pull out a single positions
-  Vec3 pos(
-    originalPositions.data[index+0],
-    originalPositions.data[index+1],
-    originalPositions.data[index+2]
-  );
-  
+  Vec3 pos = positions[i];
+
   // compute some wave deformation
   Vec3 localPos = pos - center;
   Scalar distance = axis.dot(localPos);
@@ -31,16 +23,12 @@ operator WaveDeformerPerVertex(
   Scalar factor = sin(distance * frequency + time * speed) * amplitude;
   localPos *= 1.0 + factor;
   pos = onAxisPos + localPos;
-  
-  // push back a single position
-  positions[index+0] = pos.x;
-  positions[index+1] = pos.y;
-  positions[index+2] = pos.z;
+    
+  positions[i] = pos;
 }
 
 operator WaveDeformer(
   io PolygonMesh mesh,
-  io GeometryAttributes attributes,
   io Vec3 axis,
   io Vec3 center,
   io Scalar amplitude,
@@ -48,16 +36,15 @@ operator WaveDeformer(
   io Scalar speed,
   io Scalar time
 ) {
+  // get the positions attribute and its values
+  GeometryAttributes attributes = mesh.getAttributes();
+  Vec3Attribute posAttr = attributes.getPositions();
+  Vec3 positions[] = posAttr.values;
 
-  // pull out positions data
-  Scalar positions[];
-  positions.resize(attributes.size() * 3);
-  
   // invoke multithreading
   executeParallel(
     WaveDeformerPerVertex,
-    attributes.size(),
-    attributes.scalarAttributes[Attribute_Pos],
+    positions.size(),
     positions,
     axis,
     center,
@@ -66,10 +53,10 @@ operator WaveDeformer(
     speed,
     time
   );
-  
-  // push back the positions data
-  attributes.scalarAttributes[Attribute_Pos].data = positions;
+
+  // notify of the change
+  posAttr.incrementVersion();
   
   // recompute normals
-  mesh.computeNormals(attributes);
+  mesh.computeNormals();
 }

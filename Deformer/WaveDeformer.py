@@ -1,11 +1,12 @@
-from FabricEngine.CreationPlatform.PySide.Widgets import *
+from FabricEngine.CreationPlatform.PySide import *
+from FabricEngine.CreationPlatform.Nodes.Geometry import *
 from FabricEngine.CreationPlatform.Nodes.Primitives import *
 from FabricEngine.CreationPlatform.Nodes.Kinematics import *
 from FabricEngine.CreationPlatform.Nodes.Lights import *
 from FabricEngine.CreationPlatform.Nodes.Rendering import *
 from FabricEngine.CreationPlatform.Nodes.Manipulation import *
 from FabricEngine.CreationPlatform.Nodes.Animation import *
-from FabricEngine.CreationPlatform.Nodes.Geometry.StructuredGeometryComponents.DeformComponentImpl import DeformComponent
+from FabricEngine.CreationPlatform.Nodes.Geometry.GeometryComponents.DeformComponentImpl import DeformComponent
 from FabricEngine.CreationPlatform.RT.Math import *
 
 class WaveDeformComponent(DeformComponent):
@@ -20,23 +21,23 @@ class WaveDeformComponent(DeformComponent):
     options.setdefault('speed', 5.0)
     options.setdefault('timeNode', None)
     
+  @staticmethod
+  def canApplyTo(node):
+    return isinstance(node, PolygonMesh)    
+
   def apply(self, node):
     
-    # ensure that we apply this component to a polygonmesh only
-    if not node.isTypeOf('PolygonMesh'):
-      raise Exception("Node not of type PolygonMesh!")
-
     super(WaveDeformComponent, self).apply(node)
     
     # take care of the time reference interface
-    if not node.getReferenceMap().has_key('WaveDeformTime'):
-      node.addReferenceInterface('WaveDeformTime', 'Time', True)
+    self.__node = node
+    if node.getInPort('WaveDeformTime') is None:
+      node.addReferenceInterface('WaveDeformTime', Time, True, self.__onChangeTime)
       
     # check if we have a timenode setup already
     if not node.hasWaveDeformTimeNode():
       timeNode = self._getOption('timeNode')
-      if timeNode is None or not timeNode.isTypeOf('Time'):
-        raise Exception("timeNode not specified or of wrong type!")
+      print timeNode
       node.setWaveDeformTimeNode(timeNode)
     
     # construct a unique name
@@ -59,16 +60,12 @@ class WaveDeformComponent(DeformComponent):
     self._addMemberInterface(dgNode, name+'frequency', True)
     self._addMemberInterface(dgNode, name+'speed', True)
     
-    # connect the time up
-    dgNode.setDependency(node.getWaveDeformTimeNode().getDGNode(), 'waveDeformTime')
-    
     # bind the operator
     node.bindDGOperator(
       dgNode.bindings,
       name = "WaveDeformer",
       layout = [
         'self.polygonMesh',
-        'self.attributes',
         'self.'+name+'axis',
         'self.'+name+'center',
         'self.'+name+'amplitude',
@@ -79,12 +76,19 @@ class WaveDeformComponent(DeformComponent):
       fileName = FabricEngine.CreationPlatform.buildAbsolutePath('KL', 'WaveDeformer.kl')
     )
 
-class MyApp(Basic3DDemoApplication):
+  def __onChangeTime(self, data):
+    node = data['node']
+    self.__node.getGeometryDGNode().setDependency('waveDeformTime', node.getDGNode())
+
+
+class MyApp(CreationPlatformApplication):
   
   def __init__(self):
     
     # call super class
-    super(MyApp, self).__init__()
+    super(MyApp, self).__init__(
+      setupGlobalTimeNode = True
+    )
     
     # set the window title
     self.setWindowTitle("Creation Platform Deformer Tutorial")
@@ -92,26 +96,24 @@ class MyApp(Basic3DDemoApplication):
     # access the scene, viewport and shadergroup
     scene = self.getScene()
     viewport = self.getViewport()
-    group = viewport.getShaderGroupNode()
     
     # setup a camera
     camera = TargetCamera(scene)
     viewport.setCameraNode(camera)
     CameraManipulator(scene)
     
-    # setup a light
-    light = PointLight(scene, transform = camera.getTransformNode())
-    
     # construct a torus structured mesh, transform and material
     torus = PolygonMeshTorus(scene, detail = 80)
     transform = Transform(scene)
-    material = Material(scene, xmlFile = 'Standard/Phong', shaderGroup = group, light = light)
+    material = Material(scene, xmlFile='PhongMaterial')
+    material.addPreset(name = 'standard')
     
     # construct an instance
-    instance = Instance(scene,
+    instance = GeometryInstance(scene,
       geometry = torus,   
       transform = transform,
-      material = material
+      material = material,
+      materialPreset = 'standard'
     )
     
     timeNode = scene.getNode('GlobalTime')
